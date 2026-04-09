@@ -1,15 +1,19 @@
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 
 const app = express();
-const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-let tasks = [];
+const tasks = [];
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 app.get('/tasks', (req, res) => {
   const { status } = req.query;
@@ -63,6 +67,4 @@ app.delete('/tasks/:id', (req, res) => {
   res.status(204).send();
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+module.exports = app;
