@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Manager</title>
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { max-width: 600px; margin: 40px auto; padding: 20px; }
+    h1 { text-align: center; color: #333; }
+    .form { display: flex; gap: 10px; margin-bottom: 20px; }
+    .form input { flex: 1; padding: 10px; font-size: 16px; }
+    .form button { padding: 10px 20px; background: #28a745; color: white; border: none; cursor: pointer; }
+    .form button:hover { background: #218838; }
+    .filters { margin-bottom: 20px; }
+    .filters button { padding: 8px 12px; margin-right: 5px; border: 1px solid #ddd; background: white; cursor: pointer; }
+    .filters button.active { background: #007bff; color: white; }
+    .task-list { list-style: none; padding: 0; }
+    .task { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #ddd; margin-bottom: 8px; border-radius: 4px; }
+    .task.completed { background: #f8f9fa; }
+    .task.completed .title { text-decoration: line-through; color: #6c757d; }
+    .task input[type="checkbox"] { width: 20px; height: 20px; }
+    .title { flex: 1; }
+    .edit-btn, .delete-btn { padding: 6px 12px; border: none; cursor: pointer; }
+    .edit-btn { background: #ffc107; color: #000; margin-right: 5px; }
+    .delete-btn { background: #dc3545; color: white; }
+    .error { color: red; padding: 10px; background: #fee; margin-bottom: 10px; }
+    .loading { text-align: center; color: #666; }
+    .edit-form { display: flex; gap: 10px; flex: 1; }
+    .edit-form input { flex: 1; padding: 6px; }
+    .save-btn { background: #28a745; color: white; border: none; padding: 6px 12px; cursor: pointer; }
+    .cancel-btn { background: #6c757d; color: white; border: none; padding: 6px 12px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Task Manager</h1>
+  <div id="error" class="error" style="display: none;"></div>
+  <form class="form" id="taskForm">
+    <input type="text" id="taskInput" placeholder="Enter task title..." required>
+    <button type="submit">Add Task</button>
+  </form>
+  <div class="filters">
+    <button onclick="filterTasks('all')" id="btnAll">All</button>
+    <button onclick="filterTasks('incomplete')" id="btnIncomplete">Incomplete</button>
+    <button onclick="filterTasks('completed')" id="btnCompleted">Completed</button>
+  </div>
+  <div id="loading" class="loading" style="display: none;">Loading...</div>
+  <ul class="task-list" id="taskList"></ul>
+
+  <script>
+    const API_URL = 'http://localhost:3000/tasks';
+    let currentFilter = 'all';
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = msg ? 'block' : 'none';
+    }
+
+    function setLoading(show) {
+      document.getElementById('loading').style.display = show ? 'block' : 'none';
+    }
+
+    async function fetchTasks() {
+      setLoading(true);
+      showError('');
+      try {
+        const res = await fetch(API_URL);
+        if (!res.ok) throw new Error('Failed to fetch tasks');
+        const data = await res.json();
+        renderTasks(data);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function renderTasks(tasks) {
+      const list = document.getElementById('taskList');
+      list.innerHTML = '';
+      
+      let filtered = tasks;
+      if (currentFilter === 'completed') filtered = tasks.filter(t => t.completed);
+      else if (currentFilter === 'incomplete') filtered = tasks.filter(t => !t.completed);
+      
+      filtered.forEach(task => {
+        const li = document.createElement('li');
+        li.className = `task ${task.completed ? 'completed' : ''}`;
+        li.innerHTML = `
+          <input type="checkbox" ${task.completed ? 'checked' : ''} onchange="toggleComplete('${task.id}', ${!task.completed})">
+          <span class="title">${escapeHtml(task.title)}</span>
+          <button class="edit-btn" onclick="startEdit('${task.id}', '${escapeHtml(task.title)}')">Edit</button>
+          <button class="delete-btn" onclick="deleteTask('${task.id}')">Delete</button>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    document.getElementById('taskForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('taskInput');
+      const title = input.value.trim();
+      if (!title) return;
+      
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to create task');
+        }
+        input.value = '';
+        fetchTasks();
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+
+    async function toggleComplete(id, completed) {
+      try {
+        const res = await fetch(`${API_URL}/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completed })
+        });
+        if (!res.ok) throw new Error('Failed to update task');
+        fetchTasks();
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function deleteTask(id) {
+      try {
+        const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete task');
+        fetchTasks();
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    function startEdit(id, title) {
+      const list = document.getElementById('taskList');
+      const tasks = list.querySelectorAll('.task');
+      tasks.forEach(task => {
+        const checkbox = task.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.getAttribute('onchange').includes(id)) {
+          const titleSpan = task.querySelector('.title');
+          const editBtn = task.querySelector('.edit-btn');
+          const deleteBtn = task.querySelector('.delete-btn');
+          titleSpan.style.display = 'none';
+          editBtn.style.display = 'none';
+          deleteBtn.style.display = 'none';
+          task.innerHTML = `
+            <input type="checkbox" ${task.classList.contains('completed') ? 'checked' : ''}>
+            <div class="edit-form">
+              <input type="text" id="editInput" value="${escapeHtml(title)}">
+              <button class="save-btn" onclick="saveEdit('${id}')">Save</button>
+              <button class="cancel-btn" onclick="fetchTasks()">Cancel</button>
+            </div>
+          `;
+        }
+      });
+    }
+
+    async function saveEdit(id) {
+      const input = document.getElementById('editInput');
+      const title = input.value.trim();
+      if (!title) return;
+      
+      try {
+        const res = await fetch(`${API_URL}/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        if (!res.ok) throw new Error('Failed to update task');
+        fetchTasks();
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    function filterTasks(filter) {
+      currentFilter = filter;
+      document.getElementById('btnAll').className = filter === 'all' ? 'active' : '';
+      document.getElementById('btnIncomplete').className = filter === 'incomplete' ? 'active' : '';
+      document.getElementById('btnCompleted').className = filter === 'completed' ? 'active' : '';
+      fetchTasks();
+    }
+
+    fetchTasks();
+  </script>
+</body>
+</html>
